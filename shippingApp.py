@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import io
 import os
 import urllib.request
@@ -25,8 +25,6 @@ st.title("✂️ 小林断裁 出荷管理表 ＆ 作業管理システム")
 # --------------------------------------------------
 # 2. 日本語フォント登録処理（ReportLab用・完全対応版）
 # --------------------------------------------------
-
-
 def setup_japanese_font():
   # 1. GitHubリポジトリ内やアプリと同じフォルダにある同梱フォントを最優先で読み込む
   local_font_path = "NotoSansJP-Regular.ttf"
@@ -50,7 +48,6 @@ def setup_japanese_font():
 
   # 3. どちらも見つからない場合の最終手段
   return "Helvetica"
-
 
 FONT_NAME = setup_japanese_font()
 
@@ -87,9 +84,9 @@ st.sidebar.info(
     "・終了日：本日の 18日後"
 )
 
-today = datetime.date.today()
-default_start = today - datetime.timedelta(days=1)
-default_end = today + datetime.timedelta(days=18)
+today = date.today()
+default_start = today - timedelta(days=1)
+default_end = today + timedelta(days=18)
 
 col_d1, col_d2 = st.sidebar.columns(2)
 with col_d1:
@@ -329,7 +326,7 @@ def generate_all_schedule_pdf(df_all, start_date_str, end_date_str):
   )
 
   elements = []
-  today_str = datetime.date.today().strftime("%Y年%m月%d日")
+  today_str = date.today().strftime("%Y年%m月%d日")
 
   elements.append(
       Paragraph(f"<b>小林断裁 出荷管理表 （一括出力）</b>", title_style)
