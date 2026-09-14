@@ -156,8 +156,20 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
         api_key_18, 18, "field18-58", start_date, end_date
     )
     for r in records_18:
+        # レコードIDを複数の階層から安全に探索・取得
+        record_id = str(
+            r.get("id") or 
+            r.get("recordId") or 
+            r.get("record", {}).get("id") or 
+            r.get("record", {}).get("recordId") or 
+            ""
+        ).strip()
+        if record_id.lower() == "none":
+            record_id = ""
+
+        detail_url = f"https://app060.at-pocket.com/seihon03_bb/apps/18/records/{record_id}/detail" if record_id else ""
+
         inner = r.get("record", r)
-        record_id = r.get("id", inner.get("id", ""))
 
         delivery_date = extract_pocket_field_val(inner.get("field18-58"))
         if not delivery_date:
@@ -186,6 +198,7 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
                 group_name = f"{prefix}: {word_val}"
                 parsed_items.append({
                     "レコードID": record_id,
+                    "詳細リンク": detail_url,
                     "アプリ": "App 18",
                     "作業区分": prefix,
                     "単語": word_val,
@@ -205,6 +218,7 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
         if matched_count == 0:
             parsed_items.append({
                 "レコードID": record_id,
+                "詳細リンク": detail_url,
                 "アプリ": "App 18",
                 "作業区分": "未分類",
                 "単語": "未分類",
@@ -225,25 +239,37 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
         api_key_27, 27, "field27-16", start_date, end_date
     )
     for r in records_27:
-        inner = r.get("record", r)
-        record_id = r.get("id", inner.get("id", ""))
+        record_id = str(
+            r.get("id") or 
+            r.get("recordId") or 
+            r.get("record", {}).get("id") or 
+            r.get("record", {}).get("recordId") or 
+            ""
+        ).strip()
+        if record_id.lower() == "none":
+            record_id = ""
 
-        delivery_date = extract_pocket_field_val(inner.get("field27-16"))  # 納期日
+        detail_url = f"https://app060.at-pocket.com/seihon03_bb/apps/27/records/{record_id}/detail" if record_id else ""
+
+        inner = r.get("record", r)
+
+        delivery_date = extract_pocket_field_val(inner.get("field27-16"))
         if not delivery_date:
             continue
 
-        cust = extract_pocket_field_val(inner.get("field27-22"))  # 得意先名
-        item = extract_pocket_field_val(inner.get("field27-23"))  # 品名
-        qty = extract_pocket_field_val(inner.get("field27-25")) or "0"  # 受注数量
-        spec = extract_pocket_field_val(inner.get("field27-11"))  # 依頼事項
-        order_no = extract_pocket_field_val(inner.get("field27-3"))  # 受注番号
-        hanyu = extract_pocket_field_val(inner.get("field27-14"))  # 搬入日
-        supplier = extract_pocket_field_val(inner.get("field27-4"))  # 外注先名
+        cust = extract_pocket_field_val(inner.get("field27-22"))
+        item = extract_pocket_field_val(inner.get("field27-23"))
+        qty = extract_pocket_field_val(inner.get("field27-25")) or "0"
+        spec = extract_pocket_field_val(inner.get("field27-11"))
+        order_no = extract_pocket_field_val(inner.get("field27-3"))
+        hanyu = extract_pocket_field_val(inner.get("field27-14"))
+        supplier = extract_pocket_field_val(inner.get("field27-4"))
 
         group_name = f"外注: {supplier}" if supplier else "外注"
 
         parsed_items.append({
             "レコードID": record_id,
+            "詳細リンク": detail_url,
             "アプリ": "App 27",
             "作業区分": "外注",
             "単語": supplier if supplier else "外注",
@@ -263,6 +289,9 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
         return pd.DataFrame()
 
     df = pd.DataFrame(parsed_items)
+    if "詳細リンク" not in df.columns:
+        df["詳細リンク"] = ""
+
     df = df.sort_values(
         by=["作業区分", "単語", "納入日/納期日"], ascending=[True, True, True]
     )
@@ -270,7 +299,7 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
 
 
 # --------------------------------------------------
-# 6. PDF生成関数（通常一覧用 ＆ マトリクス表用）
+# 6. PDF生成関数
 # --------------------------------------------------
 def generate_all_schedule_pdf(df_all, start_date_str, end_date_str):
     buffer = io.BytesIO()
@@ -375,7 +404,6 @@ def generate_matrix_pdf(pivot_res, start_date_str, end_date_str, selected_g_name
         "TitleStyle", parent=styles["Normal"], fontName=FONT_NAME, fontSize=12, leading=14, textColor=colors.HexColor("#1E3A8A")
     )
     
-    # マトリクス表用のコンパクトなセルスタイル
     cell_style = ParagraphStyle(
         "MatrixCell", parent=styles["Normal"], fontName=FONT_NAME, fontSize=6, leading=7.5, textColor=colors.HexColor("#1E293B")
     )
@@ -391,15 +419,12 @@ def generate_matrix_pdf(pivot_res, start_date_str, end_date_str, selected_g_name
     elements.append(Paragraph(f"<font size=7.5 color='#64748B'>発行日: {today_str} | 対象期間: {start_date_str} 〜 {end_date_str}</font>", styles["Normal"]))
     elements.append(Spacer(1, 8))
 
-    # テーブルデータの組み立て
     columns = list(pivot_res.columns)
     table_data = []
 
-    # ヘッダー行
     header_row = [Paragraph(str(c), header_style) for c in columns]
     table_data.append(header_row)
 
-    # データ行
     for _, row in pivot_res.iterrows():
         row_cells = []
         for c in columns:
@@ -407,8 +432,6 @@ def generate_matrix_pdf(pivot_res, start_date_str, end_date_str, selected_g_name
             row_cells.append(Paragraph(val, cell_style))
         table_data.append(row_cells)
 
-    # カラム幅の自動割り当て (A4横型幅 = ~812 pt利用可能)
-    # 0列目（グループ）: 70pt, 1列目（案件名）: 150pt, 残りを日付列で均等分割
     total_width = 812
     col_count = len(columns)
     if col_count > 2:
@@ -461,6 +484,9 @@ if st.button("データを取り込んで出荷管理表を表示する", type="
 if "df_all" in st.session_state and not st.session_state["df_all"].empty:
     df_all = st.session_state["df_all"]
 
+    if "詳細リンク" not in df_all.columns:
+        df_all["詳細リンク"] = ""
+
     tab_list, tab_gantt = st.tabs([
         "📋 見出し別 出荷管理表・CSV/PDF",
         "📊 スケジュール・マトリクス表（ガント風）",
@@ -475,6 +501,7 @@ if "df_all" in st.session_state and not st.session_state["df_all"].empty:
         "受注数量",
         "仕様1/依頼事項",
         "外注区分",
+        "詳細リンク",
     ]
     view_cols_csv = [
         "納入日/納期日",
@@ -523,8 +550,18 @@ if "df_all" in st.session_state and not st.session_state["df_all"].empty:
                 continue
 
             st.markdown(f"#### 🔹 【 {g_name} 】 （件数: {len(df_g)}件）")
+            
             st.dataframe(
-                df_g[view_cols_screen], use_container_width=True, hide_index=True
+                df_g[view_cols_screen],
+                column_config={
+                    "詳細リンク": st.column_config.LinkColumn(
+                        "🔗 データ詳細",
+                        help="at-pocketの該当データ画面へジャンプします",
+                        display_text="📝 詳細を開く"
+                    )
+                },
+                use_container_width=True,
+                hide_index=True
             )
 
             safe_g_name = g_name.replace(":", "").replace(" ", "_")
@@ -579,18 +616,15 @@ if "df_all" in st.session_state and not st.session_state["df_all"].empty:
                     pivot_df[d_str] = ""
 
             pivot_df = pivot_df[date_cols_str]
-
-            # 画面表示用にインデックスをリセット
             pivot_res = pivot_df.reset_index()
 
             st.dataframe(pivot_res, use_container_width=True)
 
             st.markdown("---")
-            # マトリクス表PDFダウンロードボタン
             matrix_pdf_buffer = generate_matrix_pdf(
                 pivot_res,
-                start_date.strftime("%Y/%m/%d"),
-                end_date.strftime("%Y/%m/%d"),
+                start_date.strftime("%Y-%m-%d"),
+                end_date.strftime("%Y-%m-%d"),
                 selected_g_matrix
             )
             st.download_button(
