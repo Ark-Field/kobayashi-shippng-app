@@ -182,13 +182,24 @@ def get_field_multi_key(inner, keys):
     return ""
 
 
+def is_within_date_range(date_str, start_d, end_d):
+    """YYYY-MM-DD 形式の日付文字列が対象期間内かを判定"""
+    if not date_str:
+        return False
+    try:
+        parsed_d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d").date()
+        return start_d <= parsed_d <= end_d
+    except ValueError:
+        return False
+
+
 # --------------------------------------------------
 # 5. データ集計・グループ分けメイン処理（App 18 ＆ App 27 統合）
 # --------------------------------------------------
 def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
     parsed_items = []
 
-    # --- App ID: 18 の取得（社内加工 1〜5） ---
+    # --- App ID: 18 の取得（社内加工 1〜5・納期 field18-58） ---
     records_18 = fetch_pocket_records(
         api_key_18, 18, "field18-58", start_date, end_date
     )
@@ -212,7 +223,7 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
         inner = r.get("record", r)
 
         delivery_date = extract_pocket_field_val(inner.get("field18-58"))
-        if not delivery_date:
+        if not is_within_date_range(delivery_date, start_date, end_date):
             continue
 
         cust = extract_pocket_field_val(inner.get("field18-84"))
@@ -280,14 +291,10 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
                 "作業完了": completed,
             })
 
-    # --- App ID: 27 の取得（外注・新フィールド体系） ---
+    # --- App ID: 27 の取得（外注・納期 field-141_10 で抽出） ---
     records_27 = fetch_pocket_records(
         api_key_27, 27, "field-141_10", start_date, end_date
     )
-    if not records_27:
-        records_27 = fetch_pocket_records(
-            api_key_27, 27, "field27-16", start_date, end_date
-        )
 
     for r in records_27:
         record_id = str(
@@ -309,33 +316,33 @@ def load_and_classify_data(api_key_18, api_key_27, start_date, end_date):
         inner = r.get("record", r)
 
         delivery_date = get_field_multi_key(
-            inner, ["field-141_10", "field141_10", "field-141-10", "field27-16"]
+            inner, ["field-141_10", "field141_10", "field-141-10"]
         )
-        if not delivery_date:
+        if not is_within_date_range(delivery_date, start_date, end_date):
             continue
 
         delivery_memo = get_field_multi_key(
             inner, ["field-141_11", "field141_11", "field-141-11"]
         )
         hanyu = get_field_multi_key(
-            inner, ["field-141_1", "field141_1", "field-141-1", "field27-14"]
+            inner, ["field-141_1", "field141_1", "field-141-1"]
         )
         hanyu_memo = get_field_multi_key(
             inner, ["field-141_2", "field141_2", "field-141-2"]
         )
-        cust = get_field_multi_key(inner, ["field18-84", "field27-22"])
-        item = get_field_multi_key(inner, ["field18-15", "field27-23"])
+        cust = get_field_multi_key(inner, ["field18-84"])
+        item = get_field_multi_key(inner, ["field18-15"])
         qty = (
             get_field_multi_key(
-                inner, ["field-141_6", "field141_6", "field-141-6", "field27-25"]
+                inner, ["field-141_6", "field141_6", "field-141-6"]
             )
             or "0"
         )
         spec = get_field_multi_key(
-            inner, ["field-141_12", "field141_12", "field-141-12", "field27-11"]
+            inner, ["field-141_12", "field141_12", "field-141-12"]
         )
         supplier = get_field_multi_key(
-            inner, ["field-141_5", "field141_5", "field-141-5", "field27-4"]
+            inner, ["field-141_5", "field141_5", "field-141-5"]
         )
         order_no = extract_pocket_field_val(inner.get("field27-3"))
 
